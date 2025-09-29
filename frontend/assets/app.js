@@ -1,4 +1,4 @@
-const API_BASE = "https://<TWOJ-WORKER>.workers.dev";
+const API_BASE = "https://uz-plan.grabowski-piotrekk.workers.dev";
 const GROUP = "30197";
 const TZ = "Europe/Warsaw";
 
@@ -90,5 +90,6 @@ function groupBy(arr, keyFn){
 }
 
 function hr(){ const d=document.createElement("div"); d.className="rule"; return d; }
+
 
 load();
