@@ -1,0 +1,24 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --panel: #12151a;
+  --text: #e6e6e6;
+  --muted: #9aa3af;
+  --accent: #60a5fa;
+  --border: #1f2937;
+}
+* { box-sizing: border-box; }
+html,body { margin:0; padding:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+.container { max-width: 960px; margin: 0 auto; padding: 32px 16px; text-align: center; }
+h1 { font-size: 28px; margin: 0 0 8px; }
+.range { color: var(--muted); margin: 0 0 24px; }
+.grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 768px) { .grid { grid-template-columns: 1fr 1fr; } }
+.col { display: flex; flex-direction: column; gap: 16px; }
+.card { background: var(--panel); border:1px solid var(--border); border-radius: 16px; padding: 16px; }
+.card h2 { font-size: 18px; margin: 0 0 12px; color: var(--accent); }
+.rule { height: 1px; background: var(--border); margin: 8px 0 12px; }
+.row { padding: 6px 8px; border-radius: 8px; text-align: left; }
+.row + .row { border-top: 1px dashed var(--border); }
+.meta { color: var(--muted); font-size: 12px; }
+.status { color: var(--muted); margin-top: 24px; }
