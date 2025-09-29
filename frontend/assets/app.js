@@ -6,7 +6,6 @@ const MODES = { BREAKS: "breaks", ID: "id", BT: "bt" };
 
 let weekOffset = getOffsetFromURL();
 let mode = getModeFromURL() || MODES.BREAKS;
-
 document.addEventListener("DOMContentLoaded", () => {
   ensureWeekSwitchUI();
   mountMenu();
@@ -266,3 +265,4 @@ function getDisplayRange(offsetWeeks=0){
   return { from: iso(mon), to: iso(fri) };
 }
 function iso(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`; }
+
