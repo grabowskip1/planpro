@@ -15,7 +15,7 @@ h1{font-size:28px;margin:0 0 8px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px}
 .card h2{font-size:18px;margin:0 0 12px;color:var(--accent)}
 .rule{height:1px;background:var(--border);margin:8px 0 12px}
-.row{padding:6px 8px;border-radius:8px;text-align:left;font-size:15px;}
+.row{padding:6px 8px;border-radius:8px;text-align:left;font-size:10px;}
 .row+.row{border-top:1px dashed var(--border)}
 .meta{color:var(--muted);font-size:12px}
 .status{color:var(--muted);margin-top:24px}
@@ -51,5 +51,6 @@ h1{font-size:28px;margin:0 0 8px}
   z-index:9990; opacity:0; pointer-events:none; transition:opacity .2s;
 }
 .backdrop.show{ opacity:1; pointer-events:auto; }
+
 
 
