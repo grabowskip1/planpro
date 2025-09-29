@@ -119,12 +119,13 @@ function ensureWeekSwitchUI(){
   if (!document.getElementById("prev") || !document.getElementById("next")) {
     const rangeEl = document.getElementById("range") || (()=>{ const p=document.createElement("p"); p.id="range"; document.body.prepend(p); return p; })();
     const wrap = document.createElement("div"); wrap.className = "week-switch";
-    const prev = document.createElement("button"); prev.id="prev"; prev.textContent="◀︎ Poprzedni";
-    const next = document.createElement("button"); next.id="next"; next.textContent="Następny ▶︎";
+    const prev = document.createElement("button"); prev.id="prev"; prev.textContent="◀︎";
+    const next = document.createElement("button"); next.id="next"; next.textContent="▶︎";
     rangeEl.replaceWith(wrap);
     wrap.appendChild(prev); const rangeSpan=document.createElement("span"); rangeSpan.id="range"; rangeSpan.className="range"; wrap.appendChild(rangeSpan); wrap.appendChild(next);
   }
 }
 
 load();
+
 
