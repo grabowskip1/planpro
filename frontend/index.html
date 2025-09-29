@@ -3,19 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Plan zajęć — Grupa 30197</title>
+  <title>Plan studiow</title>
   <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
+  <button id="hamburger" class="hamburger" aria-label="menu" aria-expanded="false">
+    <span></span><span></span><span></span>
+  </button>
+  <aside id="sidepanel" class="sidepanel" aria-hidden="true">
+    <h3>Widok</h3>
+    <ul>
+      <li><label><input type="radio" name="mode" value="breaks"> Plan Przerw</label></li>
+      <li><label><input type="radio" name="mode" value="id"> Plan ID</label></li>
+      <li><label><input type="radio" name="mode" value="bt"> Plan BT</label></li>
+    </ul>
+  </aside>
+
   <main class="container">
-    <h1>Plan zajęć — Grupa 30197</h1>
+    <h1>Plan zajęć</h1>
+    <div class="week-switch" id="weeks"></div>
     <p id="range" class="range"></p>
+
     <section id="grid" class="grid">
       <div class="col" id="col-left"></div>
       <div class="col" id="col-right"></div>
     </section>
+
     <p id="status" class="status"></p>
   </main>
+
   <script src="assets/app.js"></script>
 </body>
 </html>
