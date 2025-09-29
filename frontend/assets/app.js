@@ -6,12 +6,14 @@ const MODES = { BREAKS: "breaks", ID: "id", BT: "bt" };
 
 let weekOffset = getOffsetFromURL();
 let mode = getModeFromURL() || MODES.BREAKS;
+
 document.addEventListener("DOMContentLoaded", () => {
   ensureWeekSwitchUI();
   mountMenu();
   bindWeekButtons();
   load();
 });
+
 async function load(){
   setTitle();
   const { from, to } = getDisplayRange(weekOffset);
@@ -45,6 +47,7 @@ async function fetchPlan(group, from, to){
   const data = await res.json();
   return data.entries;
 }
+
 function renderLessons(entries){
   const orderLeft = ["Poniedziałek","Wtorek","Środa"];
   const orderRight = ["Czwartek","Piątek"];
@@ -55,6 +58,7 @@ function renderLessons(entries){
   for (const d of orderRight)
     qs('#col-right').appendChild(dayCard(d, (byDay[d]||[]).sort((a,b)=>a.from.localeCompare(b.from))));
 }
+
 function renderBreaks(idEntries, btEntries){
   const days = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek"];
   clearCols();
@@ -92,6 +96,7 @@ function renderBreaks(idEntries, btEntries){
     target.appendChild(card);
   }
 }
+
 function toInterval(e){ return [toMin(e.from), toMin(e.to)]; }
 function toMin(hm){ const [h,m]=hm.split(':').map(n=>parseInt(n,10)); return h*60+m; }
 function toHH(mins){ const h=Math.floor(mins/60), m=String(mins%60).padStart(2,'0'); return `${String(h).padStart(2,'0')}:${m}`; }
@@ -106,7 +111,6 @@ function mergeIntervals(arr){
   }
   return out;
 }
-
 function invertIntervals(busy){
   if (!busy || busy.length===0) return [];
   const start=busy[0][0], end=busy[busy.length-1][1];
@@ -116,7 +120,6 @@ function invertIntervals(busy){
 }
 function firstStart(busy){ return busy.length ? toHH(busy[0][0]) : null; }
 function lastEnd(busy){ return busy.length ? toHH(busy[busy.length-1][1]) : null; }
-
 function intersectIntervals(a,b){
   const out=[]; let i=0,j=0;
   while(i<a.length && j<b.length){
@@ -169,22 +172,26 @@ function groupBy(arr, key){ return (arr||[]).reduce((a,x)=>{ const k=typeof key=
 function hr(){ const d=document.createElement('div'); d.className='rule'; return d; }
 function qs(sel){ const el=document.querySelector(sel); if(!el) throw new Error(`Missing ${sel}`); return el; }
 function clearCols(){ qs('#col-left').innerHTML=''; qs('#col-right').innerHTML=''; }
+
 function ensureWeekSwitchUI(){
   const host = qs('#weeks');
   host.innerHTML = '';
-  const prev=document.createElement('button'); prev.id='prev'; prev.textContent='◀︎ Poprzedni';
+  const prev=document.createElement('button'); prev.id='prev'; prev.textContent='◀︎';
   const range=document.createElement('span'); range.id='range'; range.className='range'; range.textContent='';
-  const next=document.createElement('button'); next.id='next'; next.textContent='Następny ▶︎';
+  const next=document.createElement('button'); next.id='next'; next.textContent='▶︎';
   host.append(prev, range, next);
 }
 function bindWeekButtons(){
   qs('#prev').addEventListener('click', ()=>{ weekOffset--; updateURL(); load(); });
   qs('#next').addEventListener('click', ()=>{ weekOffset++; updateURL(); load(); });
 }
+
 function mountMenu(){
   const btn = qs('#hamburger');
   const panel = qs('#sidepanel');
+  const backdrop = qs('#backdrop');
   const radios = panel.querySelectorAll('input[name="mode"]');
+
   [...radios].forEach(r=>{
     r.checked = (r.value===mode);
     r.addEventListener('change', ()=>{
@@ -196,21 +203,40 @@ function mountMenu(){
     });
   });
 
-  btn.addEventListener('click', ()=> toggle());
-
-  function toggle(force){
-    const open = force==null ? !panel.classList.contains('open') : force;
-    panel.classList.toggle('open', open);
-    btn.setAttribute('aria-expanded', String(open));
-    panel.setAttribute('aria-hidden', String(!open));
+  function openPanel(){
+    btn.classList.add('active');
+    btn.setAttribute('aria-expanded','true');
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden','false');
+    backdrop.classList.add('show');
+    backdrop.hidden = false;
+    document.body.style.overflow = 'hidden';
   }
+  function closePanel(){
+    btn.classList.remove('active');
+    btn.setAttribute('aria-expanded','false');
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden','true');
+    backdrop.classList.remove('show');
+    setTimeout(()=>{ backdrop.hidden = true; }, 200);
+    document.body.style.overflow = '';
+  }
+  function toggle(force){
+    const willOpen = force==null ? !panel.classList.contains('open') : force;
+    if (willOpen) openPanel(); else closePanel();
+  }
+
+  btn.addEventListener('click', ()=> toggle());
+  btn.addEventListener('touchstart', e=>{ e.preventDefault(); btn.click(); }, {passive:false});
+  backdrop.addEventListener('click', closePanel);
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closePanel(); });
 }
 
 function setTitle(){
   const h = qs('#view-title');
   if (mode === MODES.BREAKS) h.textContent = 'Plan przerw';
-  else if (mode === MODES.ID) h.textContent = 'Plan zajęć ID (30197)';
-  else h.textContent = 'Plan zajęć BT (30214)';
+  else if (mode === MODES.ID) h.textContent = 'Plan zajęć - ID';
+  else h.textContent = 'Plan zajęć - BT';
 }
 
 // ===== URL helpers =====
