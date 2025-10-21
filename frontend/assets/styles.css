@@ -9,10 +9,44 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:16px/1.
 .container{max-width:960px;margin:0 auto;padding:32px 16px;text-align:center}
 h1{font-size:28px;margin:0 0 8px}
 .range{color:var(--muted);margin:0 0 24px}
-.grid{display:grid;grid-template-columns:1fr;gap:16px}
-@media(min-width:768px){.grid{grid-template-columns:1fr 1fr}}
-.col{display:flex;flex-direction:column;gap:16px}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px}
+
+.grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:16px;
+}
+@media(min-width:768px){
+  .grid{
+    grid-template-columns:1fr 1fr;
+    align-items:start;
+  }
+}
+
+.col{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+@media(max-width:767px){
+  .col{
+    flex-direction:row;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+  }
+  .col > *{
+    flex:0 0 80%;
+    scroll-snap-align:start;
+  }
+}
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:16px;
+}
 .card h2{font-size:18px;margin:0 0 12px;color:var(--accent)}
 .rule{height:1px;background:var(--border);margin:8px 0 12px}
 .row{padding:6px 8px;border-radius:8px;text-align:left;font-size:70%;}
@@ -51,4 +85,3 @@ h1{font-size:28px;margin:0 0 8px}
   z-index:9990; opacity:0; pointer-events:none; transition:opacity .2s;
 }
 .backdrop.show{ opacity:1; pointer-events:auto; }
-
