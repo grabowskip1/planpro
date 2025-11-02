@@ -3,9 +3,11 @@ const GROUP_ID = "30197";
 const GROUP_BT = "30214";
 const TZ = "Europe/Warsaw";
 const MODES = { BREAKS: "breaks", ID: "id", BT: "bt" };
+const DAYS_PL = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota","Niedziela"];
 
 let weekOffset = getOffsetFromURL();
 let mode = getModeFromURL() || MODES.BREAKS;
+
 document.addEventListener("DOMContentLoaded", () => {
   ensureWeekSwitchUI();
   mountMenu();
@@ -46,26 +48,51 @@ async function fetchPlan(group, from, to){
   const data = await res.json();
   return data.entries;
 }
+function datesForWeek(offset = weekOffset){
+  const mon = baseMonday();
+  mon.setDate(mon.getDate() + offset*7);
+  const out = {};
+  for (let i=0;i<7;i++){
+    const d = new Date(mon); d.setDate(mon.getDate()+i);
+    out[DAYS_PL[i]] = d;
+  }
+  return out;
+}
+function fmtDate(d){
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
 
 function renderLessons(entries){
   const orderLeft = ["Poniedziałek","Wtorek","Środa"];
   const orderRight = ["Czwartek","Piątek"];
   const byDay = groupBy(entries, e=>e.day);
+  const dates = datesForWeek(weekOffset);
   clearCols();
-  for (const d of orderLeft)
-    qs('#col-left').appendChild(dayCard(d, (byDay[d]||[]).sort((a,b)=>a.from.localeCompare(b.from))));
-  for (const d of orderRight)
-    qs('#col-right').appendChild(dayCard(d, (byDay[d]||[]).sort((a,b)=>a.from.localeCompare(b.from))));
+  for (const d of orderLeft){
+    const rows = (byDay[d]||[]).sort((a,b)=>a.from.localeCompare(b.from));
+    qs('#col-left').appendChild(dayCard(d, rows, dates[d]));
+  }
+  for (const d of orderRight){
+    const rows = (byDay[d]||[]).sort((a,b)=>a.from.localeCompare(b.from));
+    qs('#col-right').appendChild(dayCard(d, rows, dates[d]));
+  }
 }
 
 function renderBreaks(idEntries, btEntries){
   const days = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek"];
+  const dates = datesForWeek(weekOffset);
   clearCols();
 
   for (const [idx, d] of days.entries()){
     const target = idx < 3 ? qs('#col-left') : qs('#col-right');
     const card = document.createElement('div'); card.className='card';
-    const h2 = document.createElement('h2'); h2.textContent = d; card.appendChild(h2); card.appendChild(hr());
+
+    const h2 = document.createElement('h2'); h2.textContent = d; card.appendChild(h2);
+    const sub = document.createElement('p'); sub.className='meta daydate'; sub.textContent = fmtDate(dates[d]); card.appendChild(sub);
+    card.appendChild(hr());
 
     const idDay = (idEntries||[]).filter(x=>x.day===d);
     const btDay = (btEntries||[]).filter(x=>x.day===d);
@@ -152,9 +179,19 @@ function commonBreaks(idBusy, btBusy){
 }
 
 // ===== UI helpers =====
-function dayCard(day, rows){
+function dayCard(day, rows, dateObj){
   const card=document.createElement('div'); card.className='card';
-  const h2=document.createElement('h2'); h2.textContent=day; card.appendChild(h2); card.appendChild(hr());
+  const h2=document.createElement('h2'); h2.textContent=day; card.appendChild(h2);
+
+  if (dateObj){
+    const sub=document.createElement('p');
+    sub.className='meta daydate';
+    sub.textContent = fmtDate(dateObj);
+    card.appendChild(sub);
+  }
+
+  card.appendChild(hr());
+
   if (rows.length===0){
     const p=document.createElement('p'); p.className='meta'; p.textContent='Brak zajęć'; card.appendChild(p);
   } else {
@@ -238,7 +275,6 @@ function setTitle(){
   else h.textContent = 'Plan zajęć - BT';
 }
 
-// ===== URL helpers =====
 function getOffsetFromURL(){ const u=new URL(location.href); const w=parseInt(u.searchParams.get('w')||'0',10); return Number.isFinite(w)?w:0; }
 function getModeFromURL(){ const u=new URL(location.href); const m=u.searchParams.get('mode'); if ([MODES.BREAKS,MODES.ID,MODES.BT].includes(m)) return m; return null; }
 function updateURL(){
@@ -265,4 +301,3 @@ function getDisplayRange(offsetWeeks=0){
   return { from: iso(mon), to: iso(fri) };
 }
 function iso(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`; }
-
