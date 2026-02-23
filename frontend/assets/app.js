@@ -1,8 +1,10 @@
 const API_BASE = "https://uz-plan.grabowski-piotrekk.workers.dev";
 const GROUP_ID = "31070";
+const GROUP_AIR = "30536";
 const GROUP_BT = "31001";
 const TZ = "Europe/Warsaw";
-const MODES = { BREAKS: "breaks", ID: "id", BT: "bt" };
+
+const MODES = { BREAKS: "breaks", ID: "id", AIR: "air", BT: "bt" };
 const DAYS_PL = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota","Niedziela"];
 
 let weekOffset = getOffsetFromURL();
@@ -24,15 +26,19 @@ async function load(){
     if (mode === MODES.ID) {
       const entries = await fetchPlan(GROUP_ID, from, to);
       renderLessons(entries);
+    } else if (mode === MODES.AIR) {
+      const entries = await fetchPlan(GROUP_AIR, from, to);
+      renderLessons(entries);
     } else if (mode === MODES.BT) {
       const entries = await fetchPlan(GROUP_BT, from, to);
       renderLessons(entries);
     } else {
-      const [idEntries, btEntries] = await Promise.all([
+      const [idEntries, airEntries, btEntries] = await Promise.all([
         fetchPlan(GROUP_ID, from, to),
+        fetchPlan(GROUP_AIR, from, to),
         fetchPlan(GROUP_BT, from, to)
       ]);
-      renderBreaks(idEntries, btEntries);
+      renderBreaks3(idEntries, airEntries, btEntries);
     }
     qs('#status').textContent = "";
   } catch (err) {
@@ -48,6 +54,7 @@ async function fetchPlan(group, from, to){
   const data = await res.json();
   return data.entries;
 }
+
 function datesForWeek(offset = weekOffset){
   const mon = baseMonday();
   mon.setDate(mon.getDate() + offset*7);
@@ -58,6 +65,7 @@ function datesForWeek(offset = weekOffset){
   }
   return out;
 }
+
 function fmtDate(d){
   const dd = String(d.getDate()).padStart(2,'0');
   const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -81,7 +89,7 @@ function renderLessons(entries){
   }
 }
 
-function renderBreaks(idEntries, btEntries){
+function renderBreaks3(idEntries, airEntries, btEntries){
   const days = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek"];
   const dates = datesForWeek(weekOffset);
   clearCols();
@@ -94,31 +102,27 @@ function renderBreaks(idEntries, btEntries){
     const sub = document.createElement('p'); sub.className='meta daydate'; sub.textContent = fmtDate(dates[d]); card.appendChild(sub);
     card.appendChild(hr());
 
-    const idDay = (idEntries||[]).filter(x=>x.day===d);
-    const btDay = (btEntries||[]).filter(x=>x.day===d);
+    const idBusy  = mergeIntervals((idEntries||[]).filter(x=>x.day===d).map(toInterval));
+    const airBusy = mergeIntervals((airEntries||[]).filter(x=>x.day===d).map(toInterval));
+    const btBusy  = mergeIntervals((btEntries||[]).filter(x=>x.day===d).map(toInterval));
 
-    const idBusy = mergeIntervals(idDay.map(toInterval));
-    const btBusy = mergeIntervals(btDay.map(toInterval));
-
-    const idStart = firstStart(idBusy);
-    const btStart = firstStart(btBusy);
-    const idEnd = lastEnd(idBusy);
-    const btEnd = lastEnd(btBusy);
-
-    card.appendChild(infoLine(`Start: (ID - ${idStart||'—'}) (BT - ${btStart||'—'})`));
+    card.appendChild(infoLine(`Start: (ID - ${firstStart(idBusy)||'—'}) (AIR - ${firstStart(airBusy)||'—'}) (BT - ${firstStart(btBusy)||'—'})`));
 
     const content = document.createElement('div');
-    const breaks = commonBreaks(idBusy, btBusy);
-    if (breaks.length === 0) {
-      const p = document.createElement('p'); p.className='meta'; p.textContent='Brak wspólnych przerw'; content.appendChild(p);
+    const breaks = commonBreaks3(idBusy, airBusy, btBusy);
+
+    if (!breaks.length){
+      const p=document.createElement('p'); p.className='meta'; p.textContent='Brak wspólnych przerw'; content.appendChild(p);
     } else {
       for (const [s,e] of breaks){
-        const div = document.createElement('div'); div.className='row'; div.textContent = `${toHH(s)} — ${toHH(e)}`; content.appendChild(div);
+        const div=document.createElement('div'); div.className='row';
+        div.textContent = `${toHH(s)} — ${toHH(e)}`;
+        content.appendChild(div);
       }
     }
     card.appendChild(content);
 
-    card.appendChild(infoLine(`Koniec: (ID - ${idEnd||'—'}) (BT - ${btEnd||'—'})`));
+    card.appendChild(infoLine(`Koniec: (ID - ${lastEnd(idBusy)||'—'}) (AIR - ${lastEnd(airBusy)||'—'}) (BT - ${lastEnd(btBusy)||'—'})`));
     target.appendChild(card);
   }
 }
@@ -137,6 +141,7 @@ function mergeIntervals(arr){
   }
   return out;
 }
+
 function invertIntervals(busy){
   if (!busy || busy.length===0) return [];
   const start=busy[0][0], end=busy[busy.length-1][1];
@@ -144,8 +149,10 @@ function invertIntervals(busy){
   for (const [s,e] of busy){ if (s>cur) free.push([cur,s]); cur=Math.max(cur,e); }
   return free;
 }
+
 function firstStart(busy){ return busy.length ? toHH(busy[0][0]) : null; }
 function lastEnd(busy){ return busy.length ? toHH(busy[busy.length-1][1]) : null; }
+
 function intersectIntervals(a,b){
   const out=[]; let i=0,j=0;
   while(i<a.length && j<b.length){
@@ -156,6 +163,17 @@ function intersectIntervals(a,b){
   }
   return out;
 }
+
+function intersectMany(arrays){
+  if (!arrays.length) return [];
+  let acc = arrays[0];
+  for (let i=1;i<arrays.length;i++){
+    acc = intersectIntervals(acc, arrays[i]);
+    if (!acc.length) break;
+  }
+  return acc;
+}
+
 function clampIntervals(ints, window){
   if (!ints.length || !window) return [];
   const [ws,we]=window; const out=[];
@@ -165,17 +183,25 @@ function clampIntervals(ints, window){
   }
   return out;
 }
-function commonBreaks(idBusy, btBusy){
-  if (!idBusy.length || !btBusy.length) return [];
+
+function commonBreaks3(idBusy, airBusy, btBusy){
+  if (!idBusy.length || !airBusy.length || !btBusy.length) return [];
+
   const idWin=[idBusy[0][0], idBusy[idBusy.length-1][1]];
+  const airWin=[airBusy[0][0], airBusy[airBusy.length-1][1]];
   const btWin=[btBusy[0][0], btBusy[btBusy.length-1][1]];
-  const win=[Math.max(idWin[0], btWin[0]), Math.min(idWin[1], btWin[1])];
+
+  const win=[
+    Math.max(idWin[0], airWin[0], btWin[0]),
+    Math.min(idWin[1], airWin[1], btWin[1])
+  ];
   if (win[1] <= win[0]) return [];
-  const idFree = invertIntervals(idBusy);
-  const btFree = invertIntervals(btBusy);
-  const idFreeClamped = clampIntervals(idFree, win);
-  const btFreeClamped = clampIntervals(btFree, win);
-  return intersectIntervals(idFreeClamped, btFreeClamped);
+
+  const idFree = clampIntervals(invertIntervals(idBusy), win);
+  const airFree = clampIntervals(invertIntervals(airBusy), win);
+  const btFree = clampIntervals(invertIntervals(btBusy), win);
+
+  return intersectMany([idFree, airFree, btFree]);
 }
 
 // ===== UI helpers =====
@@ -203,6 +229,7 @@ function dayCard(day, rows, dateObj){
   }
   return card;
 }
+
 function infoLine(text){ const p=document.createElement('p'); p.className='meta'; p.textContent=text; return p; }
 function groupBy(arr, key){ return (arr||[]).reduce((a,x)=>{ const k=typeof key==='function'?key(x):x[key]; (a[k]||(a[k]=[])).push(x); return a; },{}); }
 function hr(){ const d=document.createElement('div'); d.className='rule'; return d; }
@@ -217,6 +244,7 @@ function ensureWeekSwitchUI(){
   const next=document.createElement('button'); next.id='next'; next.textContent='▶︎';
   host.append(prev, range, next);
 }
+
 function bindWeekButtons(){
   qs('#prev').addEventListener('click', ()=>{ weekOffset--; updateURL(); load(); });
   qs('#next').addEventListener('click', ()=>{ weekOffset++; updateURL(); load(); });
@@ -272,21 +300,31 @@ function setTitle(){
   const h = qs('#view-title');
   if (mode === MODES.BREAKS) h.textContent = 'Plan przerw';
   else if (mode === MODES.ID) h.textContent = 'Plan zajęć - ID';
+  else if (mode === MODES.AIR) h.textContent = 'Plan zajęć - AIR';
   else h.textContent = 'Plan zajęć - BT';
 }
 
 function getOffsetFromURL(){ const u=new URL(location.href); const w=parseInt(u.searchParams.get('w')||'0',10); return Number.isFinite(w)?w:0; }
-function getModeFromURL(){ const u=new URL(location.href); const m=u.searchParams.get('mode'); if ([MODES.BREAKS,MODES.ID,MODES.BT].includes(m)) return m; return null; }
+
+function getModeFromURL(){
+  const u=new URL(location.href);
+  const m=u.searchParams.get('mode');
+  if ([MODES.BREAKS,MODES.ID,MODES.AIR,MODES.BT].includes(m)) return m;
+  return null;
+}
+
 function updateURL(){
   const u = new URL(location.href);
   if (weekOffset!==0) u.searchParams.set('w', String(weekOffset)); else u.searchParams.delete('w');
   u.searchParams.set('mode', mode);
   history.replaceState(null, '', u.toString());
 }
+
 function zonedNow(tz=TZ){
   const now=new Date(); const inTz=new Date(now.toLocaleString('en-US',{timeZone:tz}));
   const diff=inTz.getTime()-now.getTime(); return new Date(now.getTime()+diff);
 }
+
 function baseMonday(now=zonedNow()){
   const day = now.getDay(); let monday = new Date(now);
   if (day===6) monday.setDate(monday.getDate()-(((monday.getDay()+6)%7))-7);
@@ -295,10 +333,14 @@ function baseMonday(now=zonedNow()){
   monday.setHours(0,0,0,0);
   return monday;
 }
+
 function getDisplayRange(offsetWeeks=0){
   const mon=baseMonday(); mon.setDate(mon.getDate()+offsetWeeks*7);
   const fri=new Date(mon); fri.setDate(mon.getDate()+4);
   return { from: iso(mon), to: iso(fri) };
 }
-function iso(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`; }
 
+function iso(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${da}`;
+}
