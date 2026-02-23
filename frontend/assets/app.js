@@ -1,6 +1,6 @@
 const API_BASE = "https://uz-plan.grabowski-piotrekk.workers.dev";
-const GROUP_ID = "30197";
-const GROUP_BT = "30214";
+const GROUP_ID = "31070";
+const GROUP_BT = "31001";
 const TZ = "Europe/Warsaw";
 const MODES = { BREAKS: "breaks", ID: "id", BT: "bt" };
 const DAYS_PL = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota","Niedziela"];
@@ -301,3 +301,4 @@ function getDisplayRange(offsetWeeks=0){
   return { from: iso(mon), to: iso(fri) };
 }
 function iso(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`; }
+
