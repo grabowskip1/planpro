@@ -5,7 +5,6 @@ const GROUP_AIR = '31324';
 const TZ = 'Europe/Warsaw';
 
 const MODES = {
-  BREAKS: 'breaks',
   NP: 'np',
   AIR: 'air'
 };
@@ -24,7 +23,7 @@ const WEEKDAYS = DAYS_PL.slice(0, 5);
 const WEEKEND = DAYS_PL.slice(5);
 
 let weekOffset = getOffsetFromURL();
-let mode = getModeFromURL() || MODES.BREAKS;
+let mode = getModeFromURL() || MODES.NP;
 
 document.addEventListener('DOMContentLoaded', () => {
   ensureWeekSwitchUI();
@@ -43,20 +42,10 @@ async function load() {
       const { from, to } = rangeForDays(WEEKEND);
       const entries = await fetchPlan(GROUP_NP, from, to);
       renderLessons(entries, WEEKEND);
-    } else if (mode === MODES.AIR) {
+    } else {
       const { from, to } = rangeForDays(WEEKDAYS);
       const entries = await fetchPlan(GROUP_AIR, from, to);
       renderLessons(entries, WEEKDAYS);
-    } else {
-      const npRange = rangeForDays(WEEKEND);
-      const airRange = rangeForDays(WEEKDAYS);
-
-      const [npEntries, airEntries] = await Promise.all([
-        fetchPlan(GROUP_NP, npRange.from, npRange.to),
-        fetchPlan(GROUP_AIR, airRange.from, airRange.to)
-      ]);
-
-      renderBreaks(npEntries, airEntries);
     }
 
     qs('#status').textContent = '';
@@ -126,11 +115,7 @@ function currentModeRange() {
     return rangeForDays(WEEKEND);
   }
 
-  if (mode === MODES.AIR) {
-    return rangeForDays(WEEKDAYS);
-  }
-
-  return rangeForDays(DAYS_PL);
+  return rangeForDays(WEEKDAYS);
 }
 
 function setRangeLabel() {
@@ -167,176 +152,6 @@ function renderLessons(entries, days) {
 
     target.appendChild(dayCard(day, rows, dates[day]));
   });
-}
-
-// ===== breaks =====
-
-function renderBreaks(npEntries, airEntries) {
-  const dates = datesForWeek(weekOffset);
-  clearCols();
-
-  const items = [
-    ...WEEKDAYS.map(day => ({
-      day,
-      plan: '21AiR SP',
-      entries: airEntries
-    })),
-    ...WEEKEND.map(day => ({
-      day,
-      plan: '11E NP',
-      entries: npEntries
-    }))
-  ];
-
-  const leftCount = 4;
-
-  items.forEach((item, index) => {
-    const target = index < leftCount
-      ? qs('#col-left')
-      : qs('#col-right');
-
-    target.appendChild(
-      breakCard(
-        item.day,
-        item.plan,
-        item.entries,
-        dates[item.day]
-      )
-    );
-  });
-}
-
-function breakCard(day, plan, entries, dateObj) {
-  const card = document.createElement('div');
-  card.className = 'card';
-
-  const h2 = document.createElement('h2');
-  h2.textContent = day;
-  card.appendChild(h2);
-
-  const date = document.createElement('p');
-  date.className = 'meta daydate';
-  date.textContent = fmtDate(dateObj);
-  card.appendChild(date);
-
-  const planLabel = document.createElement('p');
-  planLabel.className = 'plan-label';
-  planLabel.textContent = plan;
-  card.appendChild(planLabel);
-
-  card.appendChild(hr());
-
-  const busy = mergeIntervals(
-    (entries || [])
-      .filter(entry => entry.day === day)
-      .map(toInterval)
-  );
-
-  if (!busy.length) {
-    const p = document.createElement('p');
-    p.className = 'meta';
-    p.textContent = 'Brak zajęć';
-    card.appendChild(p);
-    return card;
-  }
-
-  card.appendChild(
-    infoLine(`Start: ${firstStart(busy) || '—'}`)
-  );
-
-  const breaks = invertIntervals(busy);
-
-  if (!breaks.length) {
-    const p = document.createElement('p');
-    p.className = 'meta';
-    p.textContent = 'Brak przerw między zajęciami';
-    card.appendChild(p);
-  } else {
-    for (const [start, end] of breaks) {
-      const div = document.createElement('div');
-      div.className = 'row';
-      div.textContent = `${toHH(start)} — ${toHH(end)}`;
-      card.appendChild(div);
-    }
-  }
-
-  card.appendChild(
-    infoLine(`Koniec: ${lastEnd(busy) || '—'}`)
-  );
-
-  return card;
-}
-
-function toInterval(entry) {
-  return [toMin(entry.from), toMin(entry.to)];
-}
-
-function toMin(hm) {
-  const [h, m] = hm.split(':').map(n => parseInt(n, 10));
-  return h * 60 + m;
-}
-
-function toHH(mins) {
-  const h = Math.floor(mins / 60);
-  const m = String(mins % 60).padStart(2, '0');
-
-  return `${String(h).padStart(2, '0')}:${m}`;
-}
-
-function mergeIntervals(arr) {
-  if (!arr || arr.length === 0) {
-    return [];
-  }
-
-  const sorted = arr
-    .map(interval => interval.slice())
-    .sort((a, b) => a[0] - b[0]);
-
-  const out = [sorted[0]];
-
-  for (let i = 1; i < sorted.length; i++) {
-    const [start, end] = sorted[i];
-    const last = out[out.length - 1];
-
-    if (start <= last[1]) {
-      last[1] = Math.max(last[1], end);
-    } else {
-      out.push([start, end]);
-    }
-  }
-
-  return out;
-}
-
-function invertIntervals(busy) {
-  if (!busy || busy.length === 0) {
-    return [];
-  }
-
-  const free = [];
-  let cursor = busy[0][1];
-
-  for (let i = 1; i < busy.length; i++) {
-    const [start, end] = busy[i];
-
-    if (start > cursor) {
-      free.push([cursor, start]);
-    }
-
-    cursor = Math.max(cursor, end);
-  }
-
-  return free;
-}
-
-function firstStart(busy) {
-  return busy.length ? toHH(busy[0][0]) : null;
-}
-
-function lastEnd(busy) {
-  return busy.length
-    ? toHH(busy[busy.length - 1][1])
-    : null;
 }
 
 // ===== UI helpers =====
@@ -381,13 +196,6 @@ function dayCard(day, rows, dateObj) {
   }
 
   return card;
-}
-
-function infoLine(text) {
-  const p = document.createElement('p');
-  p.className = 'meta';
-  p.textContent = text;
-  return p;
 }
 
 function groupBy(arr, key) {
@@ -532,9 +340,7 @@ function mountMenu() {
 function setTitle() {
   const h = qs('#view-title');
 
-  if (mode === MODES.BREAKS) {
-    h.textContent = 'Plan przerw';
-  } else if (mode === MODES.NP) {
+  if (mode === MODES.NP) {
     h.textContent = 'Plan zajęć - 11E NP';
   } else {
     h.textContent = 'Plan zajęć - 21AiR SP';
