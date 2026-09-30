@@ -1,7 +1,7 @@
 const API_BASE = "https://uz-plan.grabowski-piotrekk.workers.dev";
-const GROUP_ID = "31070";
-const GROUP_AIR = "30536";
-const GROUP_BT = "31001";
+const GROUP_ID = "";
+const GROUP_AIR = "31324";
+const GROUP_BT = "";
 const TZ = "Europe/Warsaw";
 
 const MODES = { BREAKS: "breaks", ID: "id", AIR: "air", BT: "bt" };
