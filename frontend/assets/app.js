@@ -1,346 +1,620 @@
-const API_BASE = "https://uz-plan.grabowski-piotrekk.workers.dev";
-const GROUP_ID = "";
-const GROUP_AIR = "31324";
-const GROUP_BT = "";
-const TZ = "Europe/Warsaw";
+const API_BASE = 'https://uz-plan.grabowski-piotrekk.workers.dev';
 
-const MODES = { BREAKS: "breaks", ID: "id", AIR: "air", BT: "bt" };
-const DAYS_PL = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota","Niedziela"];
+const GROUP_NP = '31489';
+const GROUP_AIR = '31324';
+const TZ = 'Europe/Warsaw';
+
+const MODES = {
+  BREAKS: 'breaks',
+  NP: 'np',
+  AIR: 'air'
+};
+
+const DAYS_PL = [
+  'Poniedziałek',
+  'Wtorek',
+  'Środa',
+  'Czwartek',
+  'Piątek',
+  'Sobota',
+  'Niedziela'
+];
+
+const WEEKDAYS = DAYS_PL.slice(0, 5);
+const WEEKEND = DAYS_PL.slice(5);
 
 let weekOffset = getOffsetFromURL();
 let mode = getModeFromURL() || MODES.BREAKS;
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener('DOMContentLoaded', () => {
   ensureWeekSwitchUI();
   mountMenu();
   bindWeekButtons();
   load();
 });
 
-async function load(){
+async function load() {
   setTitle();
-  const { from, to } = getDisplayRange(weekOffset);
-  qs('#range').textContent = `${from} — ${to}`;
-  qs('#status').textContent = "Ładowanie…";
+  setRangeLabel();
+  qs('#status').textContent = 'Ładowanie…';
+
   try {
-    if (mode === MODES.ID) {
-      const entries = await fetchPlan(GROUP_ID, from, to);
-      renderLessons(entries);
+    if (mode === MODES.NP) {
+      const { from, to } = rangeForDays(WEEKEND);
+      const entries = await fetchPlan(GROUP_NP, from, to);
+      renderLessons(entries, WEEKEND);
     } else if (mode === MODES.AIR) {
+      const { from, to } = rangeForDays(WEEKDAYS);
       const entries = await fetchPlan(GROUP_AIR, from, to);
-      renderLessons(entries);
-    } else if (mode === MODES.BT) {
-      const entries = await fetchPlan(GROUP_BT, from, to);
-      renderLessons(entries);
+      renderLessons(entries, WEEKDAYS);
     } else {
-      const [idEntries, airEntries, btEntries] = await Promise.all([
-        fetchPlan(GROUP_ID, from, to),
-        fetchPlan(GROUP_AIR, from, to),
-        fetchPlan(GROUP_BT, from, to)
+      const npRange = rangeForDays(WEEKEND);
+      const airRange = rangeForDays(WEEKDAYS);
+
+      const [npEntries, airEntries] = await Promise.all([
+        fetchPlan(GROUP_NP, npRange.from, npRange.to),
+        fetchPlan(GROUP_AIR, airRange.from, airRange.to)
       ]);
-      renderBreaks3(idEntries, airEntries, btEntries);
+
+      renderBreaks(npEntries, airEntries);
     }
-    qs('#status').textContent = "";
+
+    qs('#status').textContent = '';
   } catch (err) {
     console.error(err);
-    qs('#status').textContent = "Błąd pobierania danych.";
+    qs('#status').textContent = 'Błąd pobierania danych.';
+    clearCols();
   }
 }
 
 // ===== API =====
-async function fetchPlan(group, from, to){
-  const res = await fetch(`${API_BASE}/api/plan?group=${group}&from=${from}&to=${to}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+async function fetchPlan(group, from, to) {
+  const params = new URLSearchParams({
+    group,
+    from,
+    to
+  });
+
+  const res = await fetch(`${API_BASE}/api/plan?${params}`);
+
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+
+    try {
+      const data = await res.json();
+      if (data?.error) message += `: ${data.error}`;
+    } catch {
+      // Brak JSON-u w odpowiedzi błędu.
+    }
+
+    throw new Error(message);
+  }
+
   const data = await res.json();
-  return data.entries;
+  return data.entries || [];
 }
 
-function datesForWeek(offset = weekOffset){
-  const mon = baseMonday();
-  mon.setDate(mon.getDate() + offset*7);
+// ===== week/date =====
+
+function datesForWeek(offset = weekOffset) {
+  const monday = baseMonday();
+  monday.setDate(monday.getDate() + offset * 7);
+
   const out = {};
-  for (let i=0;i<7;i++){
-    const d = new Date(mon); d.setDate(mon.getDate()+i);
-    out[DAYS_PL[i]] = d;
+
+  for (let i = 0; i < DAYS_PL.length; i++) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    out[DAYS_PL[i]] = date;
   }
+
   return out;
 }
 
-function fmtDate(d){
-  const dd = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
+function rangeForDays(days) {
+  const dates = datesForWeek(weekOffset);
+
+  return {
+    from: iso(dates[days[0]]),
+    to: iso(dates[days[days.length - 1]])
+  };
+}
+
+function currentModeRange() {
+  if (mode === MODES.NP) {
+    return rangeForDays(WEEKEND);
+  }
+
+  if (mode === MODES.AIR) {
+    return rangeForDays(WEEKDAYS);
+  }
+
+  return rangeForDays(DAYS_PL);
+}
+
+function setRangeLabel() {
+  const { from, to } = currentModeRange();
+  qs('#range').textContent = `${from} — ${to}`;
+}
+
+function fmtDate(d) {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
+
   return `${dd}.${mm}.${yyyy}`;
 }
 
-function renderLessons(entries){
-  const orderLeft = ["Poniedziałek","Wtorek","Środa"];
-  const orderRight = ["Czwartek","Piątek"];
-  const byDay = groupBy(entries, e=>e.day);
+// ===== lessons =====
+
+function renderLessons(entries, days) {
+  const byDay = groupBy(entries, entry => entry.day);
   const dates = datesForWeek(weekOffset);
+
   clearCols();
-  for (const d of orderLeft){
-    const rows = (byDay[d]||[]).sort((a,b)=>a.from.localeCompare(b.from));
-    qs('#col-left').appendChild(dayCard(d, rows, dates[d]));
-  }
-  for (const d of orderRight){
-    const rows = (byDay[d]||[]).sort((a,b)=>a.from.localeCompare(b.from));
-    qs('#col-right').appendChild(dayCard(d, rows, dates[d]));
-  }
+
+  const leftCount = Math.ceil(days.length / 2);
+
+  days.forEach((day, index) => {
+    const rows = (byDay[day] || []).sort((a, b) =>
+      a.from.localeCompare(b.from)
+    );
+
+    const target = index < leftCount
+      ? qs('#col-left')
+      : qs('#col-right');
+
+    target.appendChild(dayCard(day, rows, dates[day]));
+  });
 }
 
-function renderBreaks3(idEntries, airEntries, btEntries){
-  const days = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek"];
+// ===== breaks =====
+
+function renderBreaks(npEntries, airEntries) {
   const dates = datesForWeek(weekOffset);
   clearCols();
 
-  for (const [idx, d] of days.entries()){
-    const target = idx < 3 ? qs('#col-left') : qs('#col-right');
-    const card = document.createElement('div'); card.className='card';
+  const items = [
+    ...WEEKDAYS.map(day => ({
+      day,
+      plan: '21AiR SP',
+      entries: airEntries
+    })),
+    ...WEEKEND.map(day => ({
+      day,
+      plan: '11E NP',
+      entries: npEntries
+    }))
+  ];
 
-    const h2 = document.createElement('h2'); h2.textContent = d; card.appendChild(h2);
-    const sub = document.createElement('p'); sub.className='meta daydate'; sub.textContent = fmtDate(dates[d]); card.appendChild(sub);
-    card.appendChild(hr());
+  const leftCount = 4;
 
-    const idBusy  = mergeIntervals((idEntries||[]).filter(x=>x.day===d).map(toInterval));
-    const airBusy = mergeIntervals((airEntries||[]).filter(x=>x.day===d).map(toInterval));
-    const btBusy  = mergeIntervals((btEntries||[]).filter(x=>x.day===d).map(toInterval));
+  items.forEach((item, index) => {
+    const target = index < leftCount
+      ? qs('#col-left')
+      : qs('#col-right');
 
-    card.appendChild(infoLine(`Start: (ID - ${firstStart(idBusy)||'—'}) (AIR - ${firstStart(airBusy)||'—'}) (BT - ${firstStart(btBusy)||'—'})`));
+    target.appendChild(
+      breakCard(
+        item.day,
+        item.plan,
+        item.entries,
+        dates[item.day]
+      )
+    );
+  });
+}
 
-    const content = document.createElement('div');
-    const breaks = commonBreaks3(idBusy, airBusy, btBusy);
+function breakCard(day, plan, entries, dateObj) {
+  const card = document.createElement('div');
+  card.className = 'card';
 
-    if (!breaks.length){
-      const p=document.createElement('p'); p.className='meta'; p.textContent='Brak wspólnych przerw'; content.appendChild(p);
-    } else {
-      for (const [s,e] of breaks){
-        const div=document.createElement('div'); div.className='row';
-        div.textContent = `${toHH(s)} — ${toHH(e)}`;
-        content.appendChild(div);
-      }
+  const h2 = document.createElement('h2');
+  h2.textContent = day;
+  card.appendChild(h2);
+
+  const date = document.createElement('p');
+  date.className = 'meta daydate';
+  date.textContent = fmtDate(dateObj);
+  card.appendChild(date);
+
+  const planLabel = document.createElement('p');
+  planLabel.className = 'plan-label';
+  planLabel.textContent = plan;
+  card.appendChild(planLabel);
+
+  card.appendChild(hr());
+
+  const busy = mergeIntervals(
+    (entries || [])
+      .filter(entry => entry.day === day)
+      .map(toInterval)
+  );
+
+  if (!busy.length) {
+    const p = document.createElement('p');
+    p.className = 'meta';
+    p.textContent = 'Brak zajęć';
+    card.appendChild(p);
+    return card;
+  }
+
+  card.appendChild(
+    infoLine(`Start: ${firstStart(busy) || '—'}`)
+  );
+
+  const breaks = invertIntervals(busy);
+
+  if (!breaks.length) {
+    const p = document.createElement('p');
+    p.className = 'meta';
+    p.textContent = 'Brak przerw między zajęciami';
+    card.appendChild(p);
+  } else {
+    for (const [start, end] of breaks) {
+      const div = document.createElement('div');
+      div.className = 'row';
+      div.textContent = `${toHH(start)} — ${toHH(end)}`;
+      card.appendChild(div);
     }
-    card.appendChild(content);
-
-    card.appendChild(infoLine(`Koniec: (ID - ${lastEnd(idBusy)||'—'}) (AIR - ${lastEnd(airBusy)||'—'}) (BT - ${lastEnd(btBusy)||'—'})`));
-    target.appendChild(card);
   }
+
+  card.appendChild(
+    infoLine(`Koniec: ${lastEnd(busy) || '—'}`)
+  );
+
+  return card;
 }
 
-function toInterval(e){ return [toMin(e.from), toMin(e.to)]; }
-function toMin(hm){ const [h,m]=hm.split(':').map(n=>parseInt(n,10)); return h*60+m; }
-function toHH(mins){ const h=Math.floor(mins/60), m=String(mins%60).padStart(2,'0'); return `${String(h).padStart(2,'0')}:${m}`; }
+function toInterval(entry) {
+  return [toMin(entry.from), toMin(entry.to)];
+}
 
-function mergeIntervals(arr){
-  if (!arr || arr.length===0) return [];
-  arr.sort((a,b)=>a[0]-b[0]);
-  const out=[arr[0].slice()];
-  for (let i=1;i<arr.length;i++){
-    const [s,e]=arr[i]; const last=out[out.length-1];
-    if (s<=last[1]) last[1]=Math.max(last[1],e); else out.push([s,e]);
+function toMin(hm) {
+  const [h, m] = hm.split(':').map(n => parseInt(n, 10));
+  return h * 60 + m;
+}
+
+function toHH(mins) {
+  const h = Math.floor(mins / 60);
+  const m = String(mins % 60).padStart(2, '0');
+
+  return `${String(h).padStart(2, '0')}:${m}`;
+}
+
+function mergeIntervals(arr) {
+  if (!arr || arr.length === 0) {
+    return [];
   }
+
+  const sorted = arr
+    .map(interval => interval.slice())
+    .sort((a, b) => a[0] - b[0]);
+
+  const out = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const [start, end] = sorted[i];
+    const last = out[out.length - 1];
+
+    if (start <= last[1]) {
+      last[1] = Math.max(last[1], end);
+    } else {
+      out.push([start, end]);
+    }
+  }
+
   return out;
 }
 
-function invertIntervals(busy){
-  if (!busy || busy.length===0) return [];
-  const start=busy[0][0], end=busy[busy.length-1][1];
-  const free=[]; let cur=start;
-  for (const [s,e] of busy){ if (s>cur) free.push([cur,s]); cur=Math.max(cur,e); }
+function invertIntervals(busy) {
+  if (!busy || busy.length === 0) {
+    return [];
+  }
+
+  const free = [];
+  let cursor = busy[0][1];
+
+  for (let i = 1; i < busy.length; i++) {
+    const [start, end] = busy[i];
+
+    if (start > cursor) {
+      free.push([cursor, start]);
+    }
+
+    cursor = Math.max(cursor, end);
+  }
+
   return free;
 }
 
-function firstStart(busy){ return busy.length ? toHH(busy[0][0]) : null; }
-function lastEnd(busy){ return busy.length ? toHH(busy[busy.length-1][1]) : null; }
-
-function intersectIntervals(a,b){
-  const out=[]; let i=0,j=0;
-  while(i<a.length && j<b.length){
-    const s=Math.max(a[i][0], b[j][0]);
-    const e=Math.min(a[i][1], b[j][1]);
-    if (e > s) out.push([s,e]);
-    if (a[i][1] < b[j][1]) i++; else j++;
-  }
-  return out;
+function firstStart(busy) {
+  return busy.length ? toHH(busy[0][0]) : null;
 }
 
-function intersectMany(arrays){
-  if (!arrays.length) return [];
-  let acc = arrays[0];
-  for (let i=1;i<arrays.length;i++){
-    acc = intersectIntervals(acc, arrays[i]);
-    if (!acc.length) break;
-  }
-  return acc;
-}
-
-function clampIntervals(ints, window){
-  if (!ints.length || !window) return [];
-  const [ws,we]=window; const out=[];
-  for (const [s,e] of ints){
-    const ss=Math.max(s,ws), ee=Math.min(e,we);
-    if (ee>ss) out.push([ss,ee]);
-  }
-  return out;
-}
-
-function commonBreaks3(idBusy, airBusy, btBusy){
-  if (!idBusy.length || !airBusy.length || !btBusy.length) return [];
-
-  const idWin=[idBusy[0][0], idBusy[idBusy.length-1][1]];
-  const airWin=[airBusy[0][0], airBusy[airBusy.length-1][1]];
-  const btWin=[btBusy[0][0], btBusy[btBusy.length-1][1]];
-
-  const win=[
-    Math.max(idWin[0], airWin[0], btWin[0]),
-    Math.min(idWin[1], airWin[1], btWin[1])
-  ];
-  if (win[1] <= win[0]) return [];
-
-  const idFree = clampIntervals(invertIntervals(idBusy), win);
-  const airFree = clampIntervals(invertIntervals(airBusy), win);
-  const btFree = clampIntervals(invertIntervals(btBusy), win);
-
-  return intersectMany([idFree, airFree, btFree]);
+function lastEnd(busy) {
+  return busy.length
+    ? toHH(busy[busy.length - 1][1])
+    : null;
 }
 
 // ===== UI helpers =====
-function dayCard(day, rows, dateObj){
-  const card=document.createElement('div'); card.className='card';
-  const h2=document.createElement('h2'); h2.textContent=day; card.appendChild(h2);
 
-  if (dateObj){
-    const sub=document.createElement('p');
-    sub.className='meta daydate';
+function dayCard(day, rows, dateObj) {
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  const h2 = document.createElement('h2');
+  h2.textContent = day;
+  card.appendChild(h2);
+
+  if (dateObj) {
+    const sub = document.createElement('p');
+    sub.className = 'meta daydate';
     sub.textContent = fmtDate(dateObj);
     card.appendChild(sub);
   }
 
   card.appendChild(hr());
 
-  if (rows.length===0){
-    const p=document.createElement('p'); p.className='meta'; p.textContent='Brak zajęć'; card.appendChild(p);
+  if (rows.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'meta';
+    p.textContent = 'Brak zajęć';
+    card.appendChild(p);
   } else {
-    for (const r of rows){
-      const div=document.createElement('div'); div.className='row';
-      div.textContent=`${r.from} | ${r.to} | ${r.subject} | ${r.type} | ${r.teacher} | ${r.room}`;
+    for (const row of rows) {
+      const div = document.createElement('div');
+      div.className = 'row';
+      div.textContent = [
+        row.from,
+        row.to,
+        row.subject,
+        row.type,
+        row.teacher,
+        row.room
+      ].join(' | ');
+
       card.appendChild(div);
     }
   }
+
   return card;
 }
 
-function infoLine(text){ const p=document.createElement('p'); p.className='meta'; p.textContent=text; return p; }
-function groupBy(arr, key){ return (arr||[]).reduce((a,x)=>{ const k=typeof key==='function'?key(x):x[key]; (a[k]||(a[k]=[])).push(x); return a; },{}); }
-function hr(){ const d=document.createElement('div'); d.className='rule'; return d; }
-function qs(sel){ const el=document.querySelector(sel); if(!el) throw new Error(`Missing ${sel}`); return el; }
-function clearCols(){ qs('#col-left').innerHTML=''; qs('#col-right').innerHTML=''; }
+function infoLine(text) {
+  const p = document.createElement('p');
+  p.className = 'meta';
+  p.textContent = text;
+  return p;
+}
 
-function ensureWeekSwitchUI(){
+function groupBy(arr, key) {
+  return (arr || []).reduce((acc, item) => {
+    const groupKey = typeof key === 'function'
+      ? key(item)
+      : item[key];
+
+    (acc[groupKey] ||= []).push(item);
+    return acc;
+  }, {});
+}
+
+function hr() {
+  const div = document.createElement('div');
+  div.className = 'rule';
+  return div;
+}
+
+function qs(sel) {
+  const el = document.querySelector(sel);
+
+  if (!el) {
+    throw new Error(`Missing ${sel}`);
+  }
+
+  return el;
+}
+
+function clearCols() {
+  qs('#col-left').innerHTML = '';
+  qs('#col-right').innerHTML = '';
+}
+
+function ensureWeekSwitchUI() {
   const host = qs('#weeks');
   host.innerHTML = '';
-  const prev=document.createElement('button'); prev.id='prev'; prev.textContent='◀︎';
-  const range=document.createElement('span'); range.id='range'; range.className='range'; range.textContent='';
-  const next=document.createElement('button'); next.id='next'; next.textContent='▶︎';
+
+  const prev = document.createElement('button');
+  prev.id = 'prev';
+  prev.type = 'button';
+  prev.textContent = '◀︎';
+  prev.setAttribute('aria-label', 'Poprzedni tydzień');
+
+  const range = document.createElement('span');
+  range.id = 'range';
+  range.className = 'range';
+  range.textContent = '';
+
+  const next = document.createElement('button');
+  next.id = 'next';
+  next.type = 'button';
+  next.textContent = '▶︎';
+  next.setAttribute('aria-label', 'Następny tydzień');
+
   host.append(prev, range, next);
 }
 
-function bindWeekButtons(){
-  qs('#prev').addEventListener('click', ()=>{ weekOffset--; updateURL(); load(); });
-  qs('#next').addEventListener('click', ()=>{ weekOffset++; updateURL(); load(); });
+function bindWeekButtons() {
+  qs('#prev').addEventListener('click', () => {
+    weekOffset--;
+    updateURL();
+    load();
+  });
+
+  qs('#next').addEventListener('click', () => {
+    weekOffset++;
+    updateURL();
+    load();
+  });
 }
 
-function mountMenu(){
+function mountMenu() {
   const btn = qs('#hamburger');
   const panel = qs('#sidepanel');
   const backdrop = qs('#backdrop');
   const radios = panel.querySelectorAll('input[name="mode"]');
 
-  [...radios].forEach(r=>{
-    r.checked = (r.value===mode);
-    r.addEventListener('change', ()=>{
-      mode = r.value;
+  [...radios].forEach(radio => {
+    radio.checked = radio.value === mode;
+
+    radio.addEventListener('change', () => {
+      mode = radio.value;
       updateURL();
-      setTitle();
       load();
       toggle(false);
     });
   });
 
-  function openPanel(){
+  function openPanel() {
     btn.classList.add('active');
-    btn.setAttribute('aria-expanded','true');
+    btn.setAttribute('aria-expanded', 'true');
     panel.classList.add('open');
-    panel.setAttribute('aria-hidden','false');
+    panel.setAttribute('aria-hidden', 'false');
     backdrop.classList.add('show');
     backdrop.hidden = false;
     document.body.style.overflow = 'hidden';
   }
-  function closePanel(){
+
+  function closePanel() {
     btn.classList.remove('active');
-    btn.setAttribute('aria-expanded','false');
+    btn.setAttribute('aria-expanded', 'false');
     panel.classList.remove('open');
-    panel.setAttribute('aria-hidden','true');
+    panel.setAttribute('aria-hidden', 'true');
     backdrop.classList.remove('show');
-    setTimeout(()=>{ backdrop.hidden = true; }, 200);
+
+    setTimeout(() => {
+      backdrop.hidden = true;
+    }, 200);
+
     document.body.style.overflow = '';
   }
-  function toggle(force){
-    const willOpen = force==null ? !panel.classList.contains('open') : force;
-    if (willOpen) openPanel(); else closePanel();
+
+  function toggle(force) {
+    const willOpen = force == null
+      ? !panel.classList.contains('open')
+      : force;
+
+    if (willOpen) {
+      openPanel();
+    } else {
+      closePanel();
+    }
   }
 
-  btn.addEventListener('click', ()=> toggle());
-  btn.addEventListener('touchstart', e=>{ e.preventDefault(); btn.click(); }, {passive:false});
+  btn.addEventListener('click', () => toggle());
+
+  btn.addEventListener('touchstart', event => {
+    event.preventDefault();
+    btn.click();
+  }, { passive: false });
+
   backdrop.addEventListener('click', closePanel);
-  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closePanel(); });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      closePanel();
+    }
+  });
 }
 
-function setTitle(){
+function setTitle() {
   const h = qs('#view-title');
-  if (mode === MODES.BREAKS) h.textContent = 'Plan przerw';
-  else if (mode === MODES.ID) h.textContent = 'Plan zajęć - ID';
-  else if (mode === MODES.AIR) h.textContent = 'Plan zajęć - AIR';
-  else h.textContent = 'Plan zajęć - BT';
+
+  if (mode === MODES.BREAKS) {
+    h.textContent = 'Plan przerw';
+  } else if (mode === MODES.NP) {
+    h.textContent = 'Plan zajęć - 11E NP';
+  } else {
+    h.textContent = 'Plan zajęć - 21AiR SP';
+  }
 }
 
-function getOffsetFromURL(){ const u=new URL(location.href); const w=parseInt(u.searchParams.get('w')||'0',10); return Number.isFinite(w)?w:0; }
+// ===== URL state =====
 
-function getModeFromURL(){
-  const u=new URL(location.href);
-  const m=u.searchParams.get('mode');
-  if ([MODES.BREAKS,MODES.ID,MODES.AIR,MODES.BT].includes(m)) return m;
+function getOffsetFromURL() {
+  const url = new URL(location.href);
+  const value = parseInt(url.searchParams.get('w') || '0', 10);
+
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getModeFromURL() {
+  const url = new URL(location.href);
+  const value = url.searchParams.get('mode');
+
+  if (Object.values(MODES).includes(value)) {
+    return value;
+  }
+
   return null;
 }
 
-function updateURL(){
-  const u = new URL(location.href);
-  if (weekOffset!==0) u.searchParams.set('w', String(weekOffset)); else u.searchParams.delete('w');
-  u.searchParams.set('mode', mode);
-  history.replaceState(null, '', u.toString());
+function updateURL() {
+  const url = new URL(location.href);
+
+  if (weekOffset !== 0) {
+    url.searchParams.set('w', String(weekOffset));
+  } else {
+    url.searchParams.delete('w');
+  }
+
+  url.searchParams.set('mode', mode);
+  history.replaceState(null, '', url.toString());
 }
 
-function zonedNow(tz=TZ){
-  const now=new Date(); const inTz=new Date(now.toLocaleString('en-US',{timeZone:tz}));
-  const diff=inTz.getTime()-now.getTime(); return new Date(now.getTime()+diff);
+// ===== timezone =====
+
+function zonedToday(tz = TZ) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts
+      .filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value])
+  );
+
+  return new Date(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    12,
+    0,
+    0,
+    0
+  );
 }
 
-function baseMonday(now=zonedNow()){
-  const day = now.getDay(); let monday = new Date(now);
-  if (day===6) monday.setDate(monday.getDate()-(((monday.getDay()+6)%7))-7);
-  else if (day===0) monday.setDate(monday.getDate()+1);
-  else monday.setDate(monday.getDate()-(((monday.getDay()+6)%7)));
-  monday.setHours(0,0,0,0);
+function baseMonday(now = zonedToday()) {
+  const monday = new Date(now);
+  const distance = (monday.getDay() + 6) % 7;
+
+  monday.setDate(monday.getDate() - distance);
+  monday.setHours(12, 0, 0, 0);
+
   return monday;
 }
 
-function getDisplayRange(offsetWeeks=0){
-  const mon=baseMonday(); mon.setDate(mon.getDate()+offsetWeeks*7);
-  const fri=new Date(mon); fri.setDate(mon.getDate()+4);
-  return { from: iso(mon), to: iso(fri) };
-}
+function iso(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
 
-function iso(d){
-  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${da}`;
+  return `${y}-${m}-${day}`;
 }
